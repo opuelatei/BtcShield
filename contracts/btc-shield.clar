@@ -54,3 +54,58 @@
 (define-constant ERR-NULLIFIER-ALREADY-EXISTS (err u1005))
 (define-constant ERR-INVALID-PROOF (err u1006))
 (define-constant ERR-TREE-FULL (err u1007))
+
+;; Constants for the privacy pool
+(define-constant MERKLE-TREE-HEIGHT u20)
+(define-constant ZERO-VALUE 0x0000000000000000000000000000000000000000000000000000000000000000)
+
+;; Data Variables
+(define-data-var current-root (buff 32) ZERO-VALUE)
+(define-data-var next-index uint u0)
+
+;; Data Maps
+(define-map deposits
+  { commitment: (buff 32) }
+  {
+    leaf-index: uint,
+    timestamp: uint,
+  }
+)
+
+(define-map nullifiers
+  { nullifier: (buff 32) }
+  { used: bool }
+)
+
+(define-map merkle-tree
+  {
+    level: uint,
+    index: uint,
+  }
+  { hash: (buff 32) }
+)
+
+;; Helper functions
+(define-private (hash-combine
+    (left (buff 32))
+    (right (buff 32))
+  )
+  (sha256 (concat left right))
+)
+
+(define-private (is-valid-hash? (hash (buff 32)))
+  (not (is-eq hash ZERO-VALUE))
+)
+
+(define-private (get-tree-node
+    (level uint)
+    (index uint)
+  )
+  (default-to ZERO-VALUE
+    (get hash
+      (map-get? merkle-tree {
+        level: level,
+        index: index,
+      })
+    ))
+)
