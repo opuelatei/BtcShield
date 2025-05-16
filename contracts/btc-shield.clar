@@ -228,3 +228,58 @@
     (ok leaf-index)
   )
 )
+
+(define-public (withdraw
+    (nullifier (buff 32))
+    (root (buff 32))
+    (proof (list 20 (buff 32)))
+    (recipient principal)
+    (token <ft-trait>)
+    (amount uint)
+  )
+  (begin
+    ;; Enhanced input validation
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (not (is-eq nullifier ZERO-VALUE)) ERR-INVALID-COMMITMENT)
+    (asserts! (not (is-eq root ZERO-VALUE)) ERR-INVALID-COMMITMENT)
+    (asserts! (validate-proof proof) ERR-INVALID-PROOF)
+    ;; Verify token implements SIP-010
+    (unwrap! (contract-call? token get-decimals) ERR-NOT-AUTHORIZED)
+    ;; Verify contract has sufficient balance
+    (let ((contract-balance (unwrap! (contract-call? token get-balance (as-contract tx-sender))
+        ERR-INSUFFICIENT-BALANCE
+      )))
+      (asserts! (>= contract-balance amount) ERR-INSUFFICIENT-BALANCE)
+    )
+    ;; Verify nullifier hasn't been used
+    (asserts! (is-none (map-get? nullifiers { nullifier: nullifier }))
+      ERR-NULLIFIER-ALREADY-EXISTS
+    )
+    ;; Verify the merkle proof with validated inputs
+    (try! (verify-merkle-proof nullifier proof root))
+    ;; Mark nullifier as used
+    (map-set nullifiers { nullifier: nullifier } { used: true })
+    ;; Transfer tokens to recipient with validated amount
+    (try! (as-contract (contract-call? token transfer amount tx-sender recipient none)))
+    (ok true)
+  )
+)
+
+;; Read-only functions
+(define-read-only (get-current-root)
+  (ok (var-get current-root))
+)
+
+(define-read-only (is-nullifier-used (nullifier (buff 32)))
+  (is-some (map-get? nullifiers { nullifier: nullifier }))
+)
+
+(define-read-only (get-deposit-info (commitment (buff 32)))
+  (map-get? deposits { commitment: commitment })
+)
+
+;; Initialize contract
+(begin
+  (var-set current-root ZERO-VALUE)
+  (var-set next-index u0)
+)
