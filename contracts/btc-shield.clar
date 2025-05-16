@@ -166,3 +166,65 @@
     }
   )
 )
+
+(define-private (verify-merkle-proof
+    (leaf-hash (buff 32))
+    (proof (list 20 (buff 32)))
+    (root (buff 32))
+  )
+  (let ((proof-result (fold verify-proof-level proof {
+      current-hash: leaf-hash,
+      is-valid: true,
+    })))
+    (if (get is-valid proof-result)
+      (ok true)
+      ERR-INVALID-PROOF
+    )
+    ;; Return the specific error code
+  )
+)
+
+(define-private (validate-proof (proof (list 20 (buff 32))))
+  (let ((proof-length (len proof)))
+    (and
+      (is-eq proof-length u20)
+      (fold and (map is-valid-hash? proof) true)
+    )
+  )
+)
+
+;; Public functions
+(define-public (deposit
+    (commitment (buff 32))
+    (amount uint)
+    (token <ft-trait>)
+  )
+  (let (
+      (leaf-index (var-get next-index))
+      (token-balance (unwrap! (contract-call? token get-balance tx-sender) ERR-INVALID-AMOUNT))
+    )
+    ;; Enhanced input validation
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (>= token-balance amount) ERR-INSUFFICIENT-BALANCE)
+    (asserts! (not (is-eq commitment ZERO-VALUE)) ERR-INVALID-COMMITMENT)
+    (asserts! (< leaf-index (pow u2 MERKLE-TREE-HEIGHT)) ERR-TREE-FULL)
+    ;; Verify token implements SIP-010 before transfer
+    (unwrap! (contract-call? token get-decimals) ERR-NOT-AUTHORIZED)
+    ;; Transfer tokens with validated amount
+    (try! (contract-call? token transfer amount tx-sender (as-contract tx-sender) none))
+    ;; Rest of the deposit logic remains the same
+    (set-tree-node u0 leaf-index commitment)
+    (update-parent-at-level u0 leaf-index)
+    (update-parent-at-level u1 (/ leaf-index u2))
+    (update-parent-at-level u2 (/ leaf-index u4))
+    (update-parent-at-level u3 (/ leaf-index u8))
+    (update-parent-at-level u4 (/ leaf-index u16))
+    (update-parent-at-level u5 (/ leaf-index u32))
+    (map-set deposits { commitment: commitment } {
+      leaf-index: leaf-index,
+      timestamp: stacks-block-height,
+    })
+    (var-set next-index (+ leaf-index u1))
+    (ok leaf-index)
+  )
+)
