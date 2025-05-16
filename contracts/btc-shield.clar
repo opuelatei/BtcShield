@@ -109,3 +109,60 @@
       })
     ))
 )
+
+(define-private (set-tree-node
+    (level uint)
+    (index uint)
+    (hash (buff 32))
+  )
+  (map-set merkle-tree {
+    level: level,
+    index: index,
+  } { hash: hash }
+  )
+)
+
+;; Merkle tree update functions
+(define-private (update-parent-at-level
+    (level uint)
+    (index uint)
+  )
+  (let (
+      (parent-index (/ index u2))
+      (is-right-child (is-eq (mod index u2) u1))
+      (sibling-index (if is-right-child
+        (- index u1)
+        (+ index u1)
+      ))
+      (current-hash (get-tree-node level index))
+      (sibling-hash (get-tree-node level sibling-index))
+    )
+    (set-tree-node (+ level u1) parent-index
+      (if is-right-child
+        (hash-combine sibling-hash current-hash)
+        (hash-combine current-hash sibling-hash)
+      ))
+  )
+)
+
+;; Verification functions
+(define-private (verify-proof-level
+    (proof-element (buff 32))
+    (accumulator {
+      current-hash: (buff 32),
+      is-valid: bool,
+    })
+  )
+  (let (
+      (current-hash (get current-hash accumulator))
+      (combined-hash (hash-combine current-hash proof-element))
+    )
+    {
+      current-hash: combined-hash,
+      is-valid: (and
+        (get is-valid accumulator)
+        (is-valid-hash? combined-hash)
+      ),
+    }
+  )
+)
